@@ -1,0 +1,24 @@
+Chưa có folder .venv
+1. Tạo env
+python -m venv .venv
+
+2. kích hoạt env 
+(window)
+.venv\Scripts\activate
+(linux/mac)
+source .venv/bin/activate
+
+3. Cài thư viện
+pip install -r requirements.txt
+
+Thoát venv nếu cần: 
+deactivate
+
+Sử dụng:
+.venv\Scripts\activate
+
+Bản chưa ổn lắm, mà có tiềm năng: (chưa đọc được ảnh)
+streamlit run app.py
+
+Bản ổn: (đã đọc được luôn ảnh)
+streamlit run appv3.py

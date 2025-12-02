@@ -1,0 +1,4 @@
+streamlit
+python-docx
+pdfplumber # bản app.py
+pymupdf # bản appv3.py (xịn hơn trong demo mới nhất)
