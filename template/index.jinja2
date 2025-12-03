@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        {% include "style.css" %}
+    </style>
+</head>
+
+<body>
+    <h1>ĐỀ THI TRẮC NGHIỆM</h1>
+    {% for item in questions %}
+    <div class="question-block">
+        <div class="question-text">Câu {{ loop.index }}: {{ item.question }}</div>
+
+        {% for img_path in item.image_abspaths %}
+        <img src="{{ img_path }}" class="question-image">
+        {% endfor %}
+
+        <div class="options">
+            {% for opt in item.options %}
+            <div class="option-item">
+                <span class="{{ 'correct-answer' if loop.index0 == item.correct_index else '' }}">
+                    {{ ["A", "B", "C", "D"][loop.index0] }}. {{ opt }}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</body>
+
+</html>

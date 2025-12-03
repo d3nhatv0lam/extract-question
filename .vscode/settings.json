@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "*.jinja2": "jinja-html",
+        "*.html": "jinja-html"
+    },
+    "[jinja-html]": {
+        "editor.formatOnSave": false,
+        "editor.defaultFormatter": null
+    }
+}

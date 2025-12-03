@@ -4,6 +4,7 @@ import random
 import io
 import zipfile
 import math
+import os
 from copy import deepcopy
 
 # --- THƯ VIỆN PDF ---
@@ -27,11 +28,13 @@ from docx.oxml.ns import qn
 # 1. CẤU HÌNH FONT & HELPER
 # ==========================================
 
+font_dir = base_dir = os.path.dirname(os.path.abspath(__file__)) + "/fonts/"
+
 def register_fonts():
     """Đăng ký font Times New Roman cho PDF"""
-    font_regular = 'Times.ttf'
-    font_bold = 'Timesbd.ttf' # Times New Roman Bold
-    font_italic = 'Timesi.ttf'
+    font_regular = font_dir +'Times.ttf'
+    font_bold = font_dir + 'Timesbd.ttf' # Times New Roman Bold
+    font_italic = font_dir + 'Timesi.ttf'
     
     used_font = 'Helvetica' # Fallback
     

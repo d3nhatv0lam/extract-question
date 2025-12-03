@@ -1,0 +1,67 @@
+   /* Cấu hình trang giấy A4 và lề chuẩn văn bản hành chính */
+   @page {
+       size: A4;
+       margin: 2cm 2cm 2cm 2.5cm;
+       /* Trên - Phải - Dưới - Trái */
+   }
+
+   body {
+       font-family: "Times New Roman", serif;
+       font-size: 13pt;
+       /* Cỡ chữ chuẩn văn bản */
+       line-height: 1.3;
+       color: #000;
+       background: #fff;
+   }
+
+   /* Tiêu đề */
+   h1 {
+       text-align: center;
+       font-size: 16pt;
+       font-weight: bold;
+       margin-bottom: 20px;
+       text-transform: uppercase;
+   }
+
+   /* Khối câu hỏi */
+   .question-block {
+       margin-bottom: 15px;
+       page-break-inside: avoid;
+       /* Tuyệt đối không ngắt trang giữa câu hỏi và đáp án */
+       text-align: justify;
+       /* Căn đều 2 bên như Word */
+   }
+
+   /* Nội dung câu hỏi */
+   .question-text {
+       font-weight: bold;
+       margin-bottom: 5px;
+   }
+
+   /* Hình ảnh */
+   .question-image {
+       display: block;
+       margin: 10px auto;
+       /* Căn giữa ảnh */
+       max-width: 80%;
+       /* Giới hạn chiều rộng */
+       max-height: 300px;
+       border: 1px solid #ccc;
+   }
+
+   /* Khu vực đáp án */
+   .options {
+       margin-left: 0.75cm;
+       /* Thụt đầu dòng cho đáp án */
+       margin-top: 5px;
+   }
+
+   .option-item {
+       margin-bottom: 3px;
+   }
+
+   /* ĐÁP ÁN ĐÚNG: Gạch chân đậm */
+   .correct-answer {
+       text-decoration: underline;
+       font-weight: bold;
+   }
