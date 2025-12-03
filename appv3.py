@@ -34,7 +34,7 @@ def is_underlined(word_rect, drawings):
             return True
     return False
 
-# --- PHẦN 2: CORE ENGINE (V18 - CALIBRATED LAYOUT) ---
+# --- PHẦN 2: CORE ENGINE (UPDATED - FIX PARSING ERROR) ---
 
 def process_pdf_v18(file_stream):
     doc = fitz.open(stream=file_stream.read(), filetype="pdf")
@@ -44,15 +44,11 @@ def process_pdf_v18(file_stream):
     current_q_id = 0
     
     for page in doc:
-        # --- A. LẤY ẢNH GỐC (NATIVE IMAGES) ---
-        # Logic: Đi tới đâu tìm ảnh tới đó
+        # --- A. LẤY ẢNH & ĐƯỜNG KẺ (GIỮ NGUYÊN) ---
         image_infos = page.get_image_info(xrefs=True)
-        image_infos.sort(key=lambda x: x['bbox'][1]) # Sort theo chiều dọc (Y)
-        
-        # Lọc bỏ ảnh quá nhỏ (icon, đường kẻ trang trí)
+        image_infos.sort(key=lambda x: x['bbox'][1])
         pending_images = [img for img in image_infos if (img['bbox'][3] - img['bbox'][1]) > 20]
 
-        # --- B. LẤY ĐƯỜNG KẺ (CHO GẠCH CHÂN) ---
         drawings = []
         for path in page.get_drawings():
             for item in path["items"]:
@@ -65,84 +61,86 @@ def process_pdf_v18(file_stream):
                     if abs(r.height) < 5: 
                         drawings.append([r.x0, r.y0, r.x1, r.y1])
 
-        # --- C. LẤY TEXT & TÍNH TOÁN LAYOUT CHUẨN ---
+        # --- C. LẤY TEXT & XỬ LÝ DÒNG THÔNG MINH ---
         words = page.get_text("words")
-        # Sort ưu tiên Y (dòng), sau đó X (trái qua phải)
-        # round(w[1]) giúp gom các từ lệch nhau < 1px vào cùng 1 dòng
-        words.sort(key=lambda w: (round(w[1]), w[0])) 
+        # Sort ban đầu: Y trước, X sau
+        words.sort(key=lambda w: (w[1], w[0]))
         
-        # --- THUẬT TOÁN TÌM LỀ CHUẨN (SMART MARGIN) ---
-        # Chỉ lấy x0 của các từ ĐẦU TIÊN trong mỗi dòng để tính lề
-        line_starters = []
-        last_y_check = -999
-        for w in words:
-            if abs(w[1] - last_y_check) > 5: # Đây là từ bắt đầu dòng mới
-                line_starters.append(round(w[0]))
-                last_y_check = w[1]
-        
-        # Lấy giá trị X xuất hiện nhiều nhất làm lề trái chuẩn (Base Margin)
-        base_margin = Counter(line_starters).most_common(1)[0][0] if line_starters else 0
-        
-        # --- BẮT ĐẦU QUÉT DÒNG ---
-        last_y = -999
-        page_clean_text = ""
-        current_line_text = "" 
-        
-        for i, w in enumerate(words):
-            text = w[4]
-            rect = [w[0], w[1], w[2], w[3]]
-            current_y = w[1]
-            
-            # 1. Check Gạch chân (Đáp án đúng)
-            if re.match(r'^[A-D][\.\)]?$', text):
-                clean_char = text[0]
-                if is_underlined(rect, drawings):
-                    text = text.replace(clean_char, f"[[{clean_char}]]")
-
-            # 2. Logic Ngắt dòng Header (Active Break)
-            force_newline = False
-            if text == "Câu" and i < len(words) - 1:
-                next_text = words[i+1][4]
-                if re.match(r'^\d+[:\.]?$', next_text):
-                    force_newline = True
-
-            # 3. Xử lý xuống dòng & Thụt lề
-            # Nếu khoảng cách Y > 5px -> Coi là dòng mới
-            if abs(current_y - last_y) > 5 or force_newline: 
-                
-                # Check ID câu hỏi từ dòng trước
-                match_q = re.match(r'^\s*Câu\s+(\d+)', current_line_text)
-                if match_q: current_q_id = int(match_q.group(1))
-                
-                current_line_text = ""
-                
-                # --- TÍNH THỤT ĐẦU DÒNG (CALIBRATED) ---
-                indent_pixel = w[0] - base_margin
-                
-                # Ngưỡng (Threshold): Chỉ thụt nếu lệch > 10px (tránh lệch li ti do canh lề)
-                # Hệ số (Divisor): 7.0 (Chiều rộng trung bình 1 ký tự)
-                if indent_pixel > 10:
-                    num_spaces = int(indent_pixel / 7.0) 
+        # --- THUẬT TOÁN GOM DÒNG (LINE GROUPING) ---
+        # Thay vì round(), ta gom các từ có Y chênh lệch < 3px vào cùng 1 dòng
+        lines = []
+        if words:
+            current_line = [words[0]]
+            for w in words[1:]:
+                # Nếu từ này lệch Y so với từ trước đó trong line < 5px -> cùng dòng
+                if abs(w[1] - current_line[-1][1]) < 5:
+                    current_line.append(w)
                 else:
-                    num_spaces = 0
-                
-                indent_str = " " * num_spaces
-                
-                page_clean_text += "\n" + indent_str + text
-                current_line_text += text
-                last_y = current_y
-            else:
-                # Cùng dòng
-                page_clean_text += " " + text
-                current_line_text += " " + text
+                    lines.append(current_line)
+                    current_line = [w]
+            lines.append(current_line)
+
+        # Sort lại từng dòng theo X (từ trái qua phải)
+        for line in lines:
+            line.sort(key=lambda w: w[0])
+
+        # --- TÍNH TOÁN LỀ TRÁI (BASE MARGIN) ---
+        line_starters = [round(line[0][0]) for line in lines if line]
+        base_margin = Counter(line_starters).most_common(1)[0][0] if line_starters else 0
+
+        # --- BẮT ĐẦU QUÉT TEXT ---
+        page_clean_text = ""
+        
+        for line in lines:
+            line_text_parts = []
             
-            # 4. Logic Gán Ảnh (Scan & Match)
-            # Kiểm tra ảnh nằm ngang hàng hoặc ngay trên dòng chữ này
+            # Kiểm tra xem dòng này có bắt đầu bằng "Câu X" không
+            # Nếu có, ta force thêm \n phía trước để tách biệt hoàn toàn
+            first_word_text = line[0][4]
+            is_new_question = False
+            if first_word_text == "Câu" and len(line) > 1:
+                if re.match(r'^\d+[:\.]?$', line[1][4]):
+                    is_new_question = True
+                    # Cập nhật ID hiện tại
+                    try:
+                        current_q_id = int(re.sub(r'\D', '', line[1][4]))
+                    except: pass
+
+            # Xử lý từng từ trong dòng
+            for w in line:
+                text = w[4]
+                rect = [w[0], w[1], w[2], w[3]]
+                
+                # Check Gạch chân (Đáp án đúng)
+                # Regex bắt: A. hoặc A) hoặc (A)
+                if re.match(r'^[\(]?[A-D][\.\)]?$', text):
+                    # Lấy ký tự cái (A, B, C, D)
+                    clean_char = re.search(r'[A-D]', text).group(0)
+                    if is_underlined(rect, drawings):
+                        text = text.replace(clean_char, f"[[{clean_char}]]")
+                
+                line_text_parts.append(text)
+
+            # --- TÍNH THỤT ĐẦU DÒNG CHO CẢ DÒNG ---
+            indent_pixel = line[0][0] - base_margin
+            num_spaces = int(indent_pixel / 6.0) if indent_pixel > 10 else 0
+            indent_str = " " * num_spaces
+            
+            full_line_str = " ".join(line_text_parts)
+            
+            # Nếu là câu mới, thêm 2 dấu xuống dòng để regex dễ cắt
+            prefix = "\n\n" if is_new_question else "\n"
+            
+            page_clean_text += prefix + indent_str + full_line_str
+
+            # --- LOGIC GÁN ẢNH (GIỮ NGUYÊN) ---
+            # Lấy tọa độ Y trung bình của dòng
+            line_y = line[0][1]
             images_to_assign = []
             for img in pending_images[:]:
-                img_top = img['bbox'][1]
-                # Nếu Top ảnh <= Top chữ + 15px (nghĩa là ảnh xuất hiện trước hoặc ngang chữ)
-                if img_top <= (current_y + 15):
+                img_bottom = img['bbox'][3]
+                # Nếu đáy ảnh nằm trên dòng này hoặc ngang dòng này
+                if img_bottom <= (line_y + 30): 
                     if current_q_id > 0:
                         images_to_assign.append(img)
                         pending_images.remove(img)
@@ -157,83 +155,122 @@ def process_pdf_v18(file_stream):
                         extracted_images_map[current_q_id].append(pil_img)
                     except: pass
 
-        # Clean up ảnh cuối trang
-        if pending_images and current_q_id > 0:
-             for img_info in pending_images:
-                try:
-                    base_img = doc.extract_image(img_info['xref'])
-                    pil_img = Image.open(io.BytesIO(base_img["image"]))
-                    if current_q_id not in extracted_images_map: extracted_images_map[current_q_id] = []
-                    extracted_images_map[current_q_id].append(pil_img)
-                except: pass
-                
-        full_text += page_clean_text + "\n"
+        full_text += page_clean_text
+
+    # Clean up ảnh còn sót lại ở cuối trang
+    if pending_images and current_q_id > 0:
+         for img_info in pending_images:
+            try:
+                base_img = doc.extract_image(img_info['xref'])
+                pil_img = Image.open(io.BytesIO(base_img["image"]))
+                if current_q_id not in extracted_images_map: extracted_images_map[current_q_id] = []
+                extracted_images_map[current_q_id].append(pil_img)
+            except: pass
 
     return full_text, extracted_images_map
 
-# --- PHẦN 3: JSON PARSING ---
+
+# --- PHẦN 3: JSON PARSING (UPDATED - SMART OPTION PARSER) ---
 
 def parse_quiz_json_v18(raw_text, img_map):
     text = normalize_text(raw_text)
-    raw_questions = re.split(r'(?:\n|^)(?=\s*Câu\s+\d+[:\.])', text)
+    
+    # Regex tách các câu hỏi: Tìm chữ "Câu X" ở đầu dòng (nhờ việc đã add \n ở step trước)
+    # (?m) bật chế độ multiline
+    split_pattern = r'(?:\n\s*|^)(?=Câu\s+\d+[:\.])'
+    raw_questions = re.split(split_pattern, text)
+    
     quiz_data = []
 
     for block in raw_questions:
-        block = block.rstrip()
+        block = block.strip()
         if not block: continue
         
-        q_num_match = re.search(r'Câu\s+(\d+)', block)
+        # Xác định ID câu hỏi
+        q_num_match = re.search(r'^Câu\s+(\d+)', block)
         if not q_num_match: continue
         q_id = int(q_num_match.group(1))
 
+        # --- LOGIC TÁCH ĐÁP ÁN (SMART SPLIT) ---
+        # Thay vì chỉ tìm "A.", ta tìm các Marker A, B, C, D nằm ở vị trí hợp lý
+        # Regex này tìm: (Đầu dòng hoặc khoảng trắng) + (A hoặc [[A]]) + (dấu chấm hoặc đóng ngoặc)
+        opt_pattern = r'(?:^|[\s])((?:\[\[([A-D])\]\]|([A-D]))[\.\)])'
+        
+        matches = list(re.finditer(opt_pattern, block))
+        
+        # Thuật toán: Tìm vị trí cắt sao cho hợp lý nhất
+        # Nếu tìm thấy 4 marker A, B, C, D -> Cắt tại A
+        # Nếu chỉ thấy A, B, C -> Cắt tại A
+        
+        split_idx = -1
+        
+        # Lọc các match để tìm chuỗi A -> B -> C...
+        if matches:
+            # Tìm match đầu tiên là 'A'
+            first_a_idx = -1
+            for i, m in enumerate(matches):
+                char = m.group(2) or m.group(3) # Lấy chữ cái (đã bỏ [[]])
+                if char == 'A':
+                    first_a_idx = i
+                    break
+            
+            if first_a_idx != -1:
+                # Lấy index trong string của chữ A này
+                split_idx = matches[first_a_idx].start(1) # start(1) là bắt đầu của nhóm A.
+        
+        # Tách Câu hỏi và Đáp án
+        if split_idx != -1:
+            q_part = block[:split_idx]
+            opts_part = block[split_idx:]
+        else:
+            q_part = block
+            opts_part = ""
+
+        # --- CLEAN CÂU HỎI ---
+        # Xóa chữ "Câu X:" ở đầu
+        q_part = re.sub(r'^Câu\s+\d+[:\.]?\s*', '', q_part).strip()
+        
         question_obj = {
             "id": q_id,
-            "question": "",
+            "question": q_part,
             "options": [],
             "correct_answer_index": -1,
             "images": []
         }
 
-        # Tìm điểm cắt Đáp án A
-        pattern_anchor = r'(?:^|[\s\n])(\s*(?:\[\[A\]\]|A)[\.\)].*)'
-        match_anchor = re.search(pattern_anchor, block, re.DOTALL)
-
-        if match_anchor:
-            split_idx = match_anchor.start(1)
-            q_part = block[:split_idx]
-            opts_part = block[split_idx:]
-        else:
-            q_part = block; opts_part = ""
-
-        # Clean câu hỏi (Giữ Indent)
-        lines = q_part.split('\n')
-        cleaned_lines = []
-        for line in lines:
-            if re.match(r'^\s*Câu\s+\d+', line):
-                line = re.sub(r'^\s*Câu\s+\d+[:\.]?\s*', '', line)
-            if line.strip(): cleaned_lines.append(line)
-        question_obj["question"] = "\n".join(cleaned_lines).strip('\n')
-
-        # Parse Options
+        # --- PARSE OPTIONS ---
         if opts_part:
-            marker_iter = re.finditer(r'(?:^|[\s])((?:\[\[([A-D])\]\]|([A-D]))[\.\)])', opts_part)
+            # Tìm lại các marker trong phần opts_part để cắt chính xác nội dung
             markers = []
-            for m in marker_iter:
-                markers.append({'full': m.group(1), 'char': m.group(2) or m.group(3), 'start': m.start(1), 'end': m.end()})
-            markers.sort(key=lambda x: x['start'])
+            for m in re.finditer(opt_pattern, opts_part):
+                markers.append({
+                    'full': m.group(1), 
+                    'char': m.group(2) or m.group(3), 
+                    'start': m.start(1), 
+                    'end': m.end()
+                })
             
             parsed_opts = {"A":"", "B":"", "C":"", "D":""}
             correct_char = None
+            
             for i, m in enumerate(markers):
                 char = m['char']
+                # Check đúng (có [[ ]])
                 if '[[' in m['full']: correct_char = char
+                
+                # Cắt text từ cuối marker này đến đầu marker kia
                 start = m['end']
                 end = markers[i+1]['start'] if i < len(markers)-1 else len(opts_part)
-                parsed_opts[char] = opts_part[start:end].strip()
+                
+                content = opts_part[start:end].strip()
+                # Xóa các ký tự thừa ở cuối nếu có
+                parsed_opts[char] = content
             
-            question_obj["options"] = [parsed_opts.get(k, "") for k in "ABCD"]
-            if correct_char: question_obj["correct_answer_index"] = ord(correct_char) - ord('A')
+            question_obj["options"] = [parsed_opts.get(k, "...") for k in "ABCD"]
+            if correct_char: 
+                question_obj["correct_answer_index"] = ord(correct_char) - ord('A')
 
+        # Gán ảnh
         if q_id in img_map:
             for idx, _ in enumerate(img_map[q_id]):
                 question_obj["images"].append(f"image_q{q_id}_{idx+1}.png")
